@@ -40,6 +40,30 @@ jobs:
           except urllib.error.HTTPError as e:
               print("EVA HTTP status:", e.code)
               print("Content type:", e.headers.get_content_type())
+              if e.headers.get_content_type() == "application/json":
+                  try:
+                      payload = json.loads(e.read(16384))
+                      messages = []
+                      if isinstance(payload, dict):
+                          for key in ("detail", "message", "error", "code", "reason", "errors"):
+                              if key in payload:
+                                  messages.append(json.dumps(payload[key], ensure_ascii=False))
+                          print("Known error fields:", ", ".join(k for k in ("detail", "message", "error", "code", "reason", "errors") if k in payload) or "none")
+                      elif isinstance(payload, str):
+                          messages.append(payload)
+                      raw = " ".join(messages).lower()
+                      groups = {
+                          "network/location restriction": ("ip address", "ip_address", "whitelist", "allowlist", "geo", "country", "region", "blocked ip", "ip-адрес", "країн"),
+                          "credentials/account": ("no active account", "invalid credentials", "invalid password", "invalid username", "inactive account", "account disabled", "неправильн", "неактивн"),
+                          "CSRF": ("csrf",),
+                          "permission/access": ("permission", "access denied", "forbidden", "not allowed", "not authorized", "доступ", "заборон"),
+                          "rate limit": ("throttl", "rate limit", "too many requests"),
+                          "verification/challenge": ("captcha", "challenge", "verify", "verification"),
+                      }
+                      matches = [label for label, words in groups.items() if any(word in raw for word in words)]
+                      print("Error category:", ", ".join(matches) or "unclassified")
+                  except (ValueError, TypeError):
+                      print("Error response could not be classified")
               sys.exit(1)
           except Exception:
               print("EVA connection failed")
