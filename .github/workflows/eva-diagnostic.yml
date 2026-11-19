@@ -1,0 +1,47 @@
+name: EVA API diagnostic
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check EVA authentication
+        env:
+          EVA_USERNAME: ${{ secrets.EVA_USERNAME }}
+          EVA_PASSWORD: ${{ secrets.EVA_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, urllib.request, urllib.error
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  return None
+          username = os.environ.get("EVA_USERNAME", "")
+          password = os.environ.get("EVA_PASSWORD", "")
+          if not username or not password:
+              print("Missing EVA secrets")
+              sys.exit(1)
+          req = urllib.request.Request(
+              "https://merchant-api.eva.ua/api/v1/token",
+              data=json.dumps({"username": username, "password": password}).encode(),
+              headers={"Content-Type": "application/json", "Accept": "application/json"},
+              method="POST")
+          try:
+              with urllib.request.build_opener(NoRedirect()).open(req, timeout=30) as r:
+                  print("EVA HTTP status:", r.status)
+                  try:
+                      payload = json.load(r)
+                      valid = isinstance(payload, dict) and isinstance(payload.get("access"), str) and bool(payload["access"])
+                  except (ValueError, TypeError):
+                      valid = False
+                  print("Access token received:", "yes" if valid else "no")
+                  sys.exit(0 if valid else 1)
+          except urllib.error.HTTPError as e:
+              print("EVA HTTP status:", e.code)
+              print("Content type:", e.headers.get_content_type())
+              sys.exit(1)
+          except Exception:
+              print("EVA connection failed")
+              sys.exit(1)
+          PY
